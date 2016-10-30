@@ -22,86 +22,86 @@ function mmbeta_social_scripts() {
 
 add_action( 'wp_enqueue_scripts', 'mmbeta_social_scripts' );
 
+$twitter_settings = array(
+  'oauth_access_token' => get_field('twitter_access_token', 'option'),
+  'oauth_access_token_secret' => get_field('twitter_access_token_secret', 'option'),
+  'consumer_key' => get_field('twitter_api_key', 'option'),
+  'consumer_secret' => get_field('twitter_secret', 'option'),
+);
 
-// Cronjob that triggers API calls
-function hourly_social_api_call(){
-  function get_facebook_feed(){
-    $response = wp_remote_get( 'https://graph.facebook.com/mediummagazin/feed?access_token=312152239170808|6e57a42a6f2be8c5a76507bf35b38e48'
-    );
+function get_facebook_feed(){
+  $feed_response = wp_remote_get( 'https://graph.facebook.com/mediummagazin/feed?access_token=312152239170808|6e57a42a6f2be8c5a76507bf35b38e48'
+  );
+
+  if ( is_array( $feed_response ) && ! is_wp_error( $feed_response ) ) {
+      $headers = $feed_response['headers'];
+      $body    = $feed_response['body'];
+
+      // Cache the body
+      set_transient( 'mmbeta_facebook_feed', $body, 60*60 );
+  }
+}
+
+function get_fresh_facebook_post($post_id) {
+  $cached_post = json_decode( get_transient( 'mmbeta_fresh_facebook_post' ) );
+
+  if ( isset($cached_post->error) || isset($cached_post->id) && $post_id !== $cached_post->id || !$cached_post) {
+    $response = wp_remote_get( 'https://graph.facebook.com/' . $post_id );
 
     if ( is_array( $response ) && ! is_wp_error( $response ) ) {
         $headers = $response['headers'];
         $body    = $response['body'];
 
         // Cache the body
-        set_transient( 'mmbeta_facebook_feed', $body, 60*60 );
-    }
-  }
+        set_transient( 'mmbeta_fresh_facebook_post', $body, 60*60 );
+    } 
+  } 
+}
 
-  function get_fresh_facebook_post($post_id) {
-    $cached_post = json_decode( get_transient( 'mmbeta_fresh_facebook_post' ) );
+function get_latest_tweet($settings){
+  $url = 'https://api.twitter.com/1.1/statuses/user_timeline.json';
+  $getfield = '?screen_name=mediummagazin&count=1';
+  $requestMethod = 'GET';
 
-    if ( isset($cached_post->error) || isset($cached_post->id) && $post_id !== $cached_post->id) {
-      $response = wp_remote_get( 'https://graph.facebook.com/' . $post_id );
+  $twitter = new TwitterAPIExchange($settings);
+  $response = $twitter->setGetfield($getfield)
+      ->buildOauth($url, $requestMethod)
+      ->performRequest();
 
-      if ( is_array( $response ) && ! is_wp_error( $response ) ) {
-          $headers = $response['headers'];
-          $body    = $response['body'];
+  $tweet = json_decode($response)[0];
 
-          // Cache the body
-          set_transient( 'mmbeta_fresh_facebook_post', $body, 60*60 );
-      } 
+  if (isset($tweet->id_str)) {
+    $response = wp_remote_get( 
+      "https://api.twitter.com/1.1/statuses/oembed.json?id=" . $tweet->id_str . 
+      "&hide_media=false&hide_thread=false&align=center&maxwidth=550"
+    );
+    
+    if ( is_array( $response ) && ! is_wp_error( $response ) ) {
+        $headers = $response['headers'];
+        $body    = json_decode($response['body']);
+        // Cache the body
+        set_transient( 'mmbeta_tweet', $body, 60*60 );
     } 
   }
+}
 
-  function get_latest_tweet($settings){
-    $url = 'https://api.twitter.com/1.1/statuses/user_timeline.json';
-    $getfield = '?screen_name=mediummagazin&count=1';
-    $requestMethod = 'GET';
-
-    $twitter = new TwitterAPIExchange($settings);
-    $response = $twitter->setGetfield($getfield)
-        ->buildOauth($url, $requestMethod)
-        ->performRequest();
-
-    $tweet = json_decode($response)[0];
-
-    if (isset($tweet->id_str)) {
-      $response = wp_remote_get( 
-        "https://api.twitter.com/1.1/statuses/oembed.json?id=" . $tweet->id_str . 
-        "&hide_media=false&hide_thread=false&align=center&maxwidth=550"
-      );
-      
-      if ( is_array( $response ) && ! is_wp_error( $response ) ) {
-          $headers = $response['headers'];
-          $body    = json_decode($response['body']);
-          // Cache the body
-          set_transient( 'mmbeta_tweet', $body, 60*60 );
-      } 
-    }
-  }
-
-  $twitter_settings = array(
-    'oauth_access_token' => get_field('twitter_access_token', 'option'),
-    'oauth_access_token_secret' => get_field('twitter_access_token_secret', 'option'),
-    'consumer_key' => get_field('twitter_api_key', 'option'),
-    'consumer_secret' => get_field('twitter_secret', 'option'),
-  );
+// Cronjob that triggers API calls
+function hourly_social_api_call(){
 
   $mmbeta_facebook_feed = json_decode( get_transient( 'mmbeta_facebook_feed' ) );
-   
+ 
   if( !$mmbeta_facebook_feed || isset($mmbeta_facebook_feed->error) ) {
     // Transient expired, refresh the data
     get_facebook_feed();
   }
 
-  
+
   if (isset($mmbeta_facebook_feed->data[0]->id)) {
     $newest_post_from_feed = $mmbeta_facebook_feed->data[0]->id;
+    get_fresh_facebook_post($newest_post_from_feed);
   }
   
   get_latest_tweet($twitter_settings);
-  get_fresh_facebook_post($newest_post_from_feed);
 }
 
 /* The activation hook is executed when the plugin is activated. */
