@@ -22,13 +22,6 @@ function mmbeta_social_scripts() {
 
 add_action( 'wp_enqueue_scripts', 'mmbeta_social_scripts' );
 
-$twitter_settings = array(
-  'oauth_access_token' => get_field('twitter_access_token', 'option'),
-  'oauth_access_token_secret' => get_field('twitter_access_token_secret', 'option'),
-  'consumer_key' => get_field('twitter_api_key', 'option'),
-  'consumer_secret' => get_field('twitter_secret', 'option'),
-);
-
 function get_facebook_feed(){
   $feed_response = wp_remote_get( 'https://graph.facebook.com/mediummagazin/feed?access_token=312152239170808|6e57a42a6f2be8c5a76507bf35b38e48'
   );
@@ -58,12 +51,18 @@ function get_fresh_facebook_post($post_id) {
   } 
 }
 
-function get_latest_tweet($settings){
+function get_latest_tweet(){
+  $twitter_settings = array(
+    'oauth_access_token' => get_field('twitter_access_token', 'option'),
+    'oauth_access_token_secret' => get_field('twitter_access_token_secret', 'option'),
+    'consumer_key' => get_field('twitter_api_key', 'option'),
+    'consumer_secret' => get_field('twitter_secret', 'option'),
+  );
   $url = 'https://api.twitter.com/1.1/statuses/user_timeline.json';
   $getfield = '?screen_name=mediummagazin&count=1';
   $requestMethod = 'GET';
 
-  $twitter = new TwitterAPIExchange($settings);
+  $twitter = new TwitterAPIExchange($twitter_settings);
   $response = $twitter->setGetfield($getfield)
       ->buildOauth($url, $requestMethod)
       ->performRequest();
@@ -101,7 +100,7 @@ function hourly_social_api_call(){
     get_fresh_facebook_post($newest_post_from_feed);
   }
   
-  get_latest_tweet($twitter_settings);
+  get_latest_tweet();
 }
 
 /* The activation hook is executed when the plugin is activated. */
