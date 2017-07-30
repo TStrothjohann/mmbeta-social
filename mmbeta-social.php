@@ -4,7 +4,7 @@ Plugin Name: mmbeta Social
 Plugin URI: http://mmbeta.de/social/
 Description: Wordpress Plugin integrating mediummagazin's Facebook and Twitter feeds
 Author: Thomas Strothjohann
-Version: 0.1
+Version: 0.2
 Author URI: http://codereporter.de
 */
 
@@ -23,7 +23,16 @@ function mmbeta_social_scripts() {
 add_action( 'wp_enqueue_scripts', 'mmbeta_social_scripts' );
 
 function get_facebook_feed(){
-  $feed_response = wp_remote_get( 'https://graph.facebook.com/mediummagazin/feed?access_token=312152239170808|6e57a42a6f2be8c5a76507bf35b38e48'
+  
+  $facebook_settings = array(
+    'app_id' => get_field('facebook_app_id', 'option'),
+    'app_secret' => get_field('facebook_secret', 'option'),
+  );
+
+  $feed_response = wp_remote_get( 
+    'https://graph.facebook.com/mediummagazin/feed?access_token=' . 
+    $facebook_settings['app_id'] . '|' . 
+    $facebook_settings['app_secret']
   );
 
   if ( is_array( $feed_response ) && ! is_wp_error( $feed_response ) ) {
@@ -37,9 +46,19 @@ function get_facebook_feed(){
 
 function get_fresh_facebook_post($post_id) {
   $cached_post = json_decode( get_transient( 'mmbeta_fresh_facebook_post' ) );
+  $facebook_settings = array(
+    'app_id' => get_field('facebook_app_id', 'option'),
+    'app_secret' => get_field('facebook_secret', 'option'),
+  );
+  //Wenn kein gecachter Post da ist, ein error oder ein Post gecacht ist, 
+  //der älter ist, als der neueste des gecachten Feeds -> hole einen neuen.
 
   if ( isset($cached_post->error) || isset($cached_post->id) && $post_id !== $cached_post->id || !$cached_post) {
-    $response = wp_remote_get( 'https://graph.facebook.com/' . $post_id );
+
+    $response = wp_remote_get( 'https://graph.facebook.com/' . $post_id . '?access_token=' . 
+      $facebook_settings['app_id'] . '|' . 
+      $facebook_settings['app_secret']
+    );
 
     if ( is_array( $response ) && ! is_wp_error( $response ) ) {
         $headers = $response['headers'];
@@ -88,7 +107,7 @@ function get_latest_tweet(){
 function hourly_social_api_call(){
 
   $mmbeta_facebook_feed = json_decode( get_transient( 'mmbeta_facebook_feed' ) );
- 
+
   if( !$mmbeta_facebook_feed || isset($mmbeta_facebook_feed->error) ) {
     // Transient expired, refresh the data
     get_facebook_feed();
@@ -100,7 +119,11 @@ function hourly_social_api_call(){
     get_fresh_facebook_post($newest_post_from_feed);
   }
   
-  get_latest_tweet();
+  $cached_tweet = get_transient( 'mmbeta_tweet' );
+
+  if (!$cached_tweet || isset( $cached_tweet->error ) ){
+    get_latest_tweet();
+  }
 }
 
 /* The activation hook is executed when the plugin is activated. */
